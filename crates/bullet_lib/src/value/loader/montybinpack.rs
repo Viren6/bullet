@@ -182,7 +182,10 @@ fn parse_into_buffer<T: Fn(&Position, Move, i16, f32) -> bool>(
 
     for data in game.moves {
         if filter(&pos, data.best_move, data.score, game.result) {
-            buffer.push(ChessBoard::from_raw(pos.bbs(), pos.stm(), data.score, game.result).unwrap());
+            let mut board =
+                ChessBoard::from_raw(pos.bbs(), pos.stm(), data.score, game.result).unwrap();
+            board.extra[0] = pos.halfm();
+            buffer.push(board);
         }
 
         pos.make(data.best_move, &castling);
