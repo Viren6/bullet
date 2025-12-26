@@ -103,6 +103,14 @@ impl Device for CpuThread {
     ) -> OperationResult<Self::DeviceError> {
         Err(OperationError::UnsupportedOperation)
     }
+
+    fn l2_norm(size: usize, buf: &Self::BufferF32) -> Result<f32, Self::DeviceError> {
+        let mut sum = 0.0;
+        for &val in &buf.buf[..size] {
+            sum += val * val;
+        }
+        Ok(sum.sqrt())
+    }
 }
 
 #[allow(unused)]
@@ -158,4 +166,5 @@ impl CoreDeviceOps for CpuThread {
     ) -> OperationResult<Self::DeviceError> {
         Err(OperationError::UnsupportedOperation)
     }
+
 }

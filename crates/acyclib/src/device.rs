@@ -89,4 +89,6 @@ pub trait Device: Sized + 'static {
         sparse: &Self::BufferI32,
         dense: &mut Self::BufferF32,
     ) -> OperationResult<Self::DeviceError>;
+
+    fn l2_norm(size: usize, buf: &Self::BufferF32) -> Result<f32, Self::DeviceError>;
 }

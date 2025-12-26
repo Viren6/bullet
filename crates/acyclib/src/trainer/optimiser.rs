@@ -44,6 +44,7 @@ pub struct Optimiser<D: Device, G: GraphLike<D>, S: OptimiserState<D>> {
     pub state: HashMap<String, S>,
     pre_update: Vec<Box<dyn AdditionalUpdate<D>>>,
     post_update: Vec<Box<dyn AdditionalUpdate<D>>>,
+    pub max_grad_norm: f32,
 }
 
 pub trait AdditionalUpdate<D: Device> {
@@ -69,7 +70,11 @@ impl<D: Device, G: GraphLike<D>, S: OptimiserState<D>> Optimiser<D, G, S> {
             assert!(old.is_none());
         }
 
-        Ok(Self { phantom: PhantomData, graph, state, pre_update: Vec::new(), post_update: Vec::new() })
+        Ok(Self { phantom: PhantomData, graph, state, pre_update: Vec::new(), post_update: Vec::new(), max_grad_norm: 2.0 })
+    }
+
+    pub fn set_max_grad_norm(&mut self, max_grad_norm: f32) {
+        self.max_grad_norm = max_grad_norm;
     }
 
     pub fn add_pre_update(&mut self, additional: impl AdditionalUpdate<D> + 'static) {
@@ -85,7 +90,30 @@ impl<D: Device, G: GraphLike<D>, S: OptimiserState<D>> Optimiser<D, G, S> {
             additional.apply_update(self.graph.primary_mut())?;
         }
 
-        for id in &self.graph.primary().weight_ids() {
+        let mut total_norm_sq = 0.0;
+        let weight_ids = self.graph.primary().weight_ids();
+
+        for id in &weight_ids {
+            let idx = self.graph.primary().weight_idx(id).unwrap();
+            let grad_id = GraphNodeId::new(idx, GraphNodeIdTy::Gradients);
+            
+            if let Ok(grads) = self.graph.primary().get(grad_id) {
+                self.graph.reduce_sum_into_first(&self.graph.get_all(grad_id)?)?;
+                let norm = grads.dense().l2_norm()?;
+                total_norm_sq += norm * norm;
+            }
+        }
+
+        let global_norm = total_norm_sq.sqrt();
+        let clip_scale = if global_norm * gradient_factor > self.max_grad_norm {
+             self.max_grad_norm / (global_norm * gradient_factor + 1e-6)
+        } else {
+            1.0
+        };
+
+        let effective_gradient_factor = gradient_factor * clip_scale;
+
+        for id in &weight_ids {
             let idx = self.graph.primary().weight_idx(id).unwrap();
             let weight_id = GraphNodeId::new(idx, GraphNodeIdTy::Values);
 
@@ -94,8 +122,7 @@ impl<D: Device, G: GraphLike<D>, S: OptimiserState<D>> Optimiser<D, G, S> {
 
             let grad_id = GraphNodeId::new(idx, GraphNodeIdTy::Gradients);
             if let Ok(grads) = self.graph.primary().get(grad_id) {
-                self.graph.reduce_sum_into_first(&self.graph.get_all(grad_id)?)?;
-                single.update(&mut *weights.dense_mut(), &mut *grads.dense_mut(), gradient_factor, learning_rate)?;
+                single.update(&mut *weights.dense_mut(), &mut *grads.dense_mut(), effective_gradient_factor, learning_rate)?;
                 self.graph.scatter_first_into_rest(&self.graph.get_all(weight_id)?)?;
             }
         }

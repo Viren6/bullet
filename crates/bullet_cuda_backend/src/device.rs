@@ -162,6 +162,14 @@ impl Device for CudaDevice {
 
         Ok(())
     }
+
+    fn l2_norm(size: usize, buf: &Self::BufferF32) -> Result<f32, Self::DeviceError> {
+        if size > buf.size() {
+            return Err(CudaError::Generic);
+        }
+
+        buf.device.blas.nrm2(&buf.buf.slice(0..size)).map_err(CudaError::Blas)
+    }
 }
 
 impl CoreDeviceOps for CudaDevice {
@@ -342,4 +350,5 @@ impl CoreDeviceOps for CudaDevice {
 
         Ok(())
     }
+
 }

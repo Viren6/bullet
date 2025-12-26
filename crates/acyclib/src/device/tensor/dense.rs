@@ -63,6 +63,11 @@ impl<D: Device> DenseMatrix<D> {
         Ok(())
     }
 
+    pub fn l2_norm(&self) -> Result<f32, OperationError<D::DeviceError>> {
+        let n = D::l2_norm(self.size(), &self.buf)?;
+        Ok(n)
+    }
+
     pub fn allocated_size(&self) -> usize {
         self.buf.size()
     }
