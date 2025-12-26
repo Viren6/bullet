@@ -8,7 +8,7 @@ pub use buffer::CudaBuffer;
 use std::sync::{Arc, Mutex};
 
 use acyclib::{
-    device::{Device, DeviceBuffer, OperationError, OperationResult, operation::CoreDeviceOps},
+    device::{Device, DeviceBuffer, OperationError, OperationResult, operation::{BaseOperations, BlasOperations, CoreDeviceOps, GemmConfig}, tensor::Shape},
     graph::ir::BackendMarker,
 };
 use cudarc::{
@@ -168,7 +168,18 @@ impl Device for CudaDevice {
             return Err(CudaError::Generic);
         }
 
-        buf.device.blas.nrm2(&buf.buf.slice(0..size)).map_err(CudaError::Blas)
+        let mut result = Self::BufferF32::new(buf.device(), 1)?;
+        result.set_zero()?;
+
+        let shape = Shape::new(size, 1);
+        let config = GemmConfig::new(1.0, 0.0, shape, true, shape, false);
+
+        result.gemm(&config, buf, buf)?;
+
+        let mut host_result = [0.0];
+        result.write_into_slice(&mut host_result, 1)?;
+
+        Ok(host_result[0].sqrt())
     }
 }
 
